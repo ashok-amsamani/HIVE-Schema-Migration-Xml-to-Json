@@ -1,0 +1,113 @@
+1. Place bankserde.xml in linux /home/hduser/
+
+2. Get Xml Serde
+
+	cd /home/hduser/
+	wget https://repo1.maven.org/maven2/com/ibm/spss/hive/serde2/xml/hivexmlserde/1.0.5.3/hivexmlserde-1.0.5.3.jar;
+
+3. Add Xml Serde in Hive session
+
+	add jar /home/hduser/hivexmlserde-1.0.5.3.jar;
+
+4. Create table with xml serde
+	
+	CREATE TABLE xml_bank(customer_id STRING, income BIGINT, demographics map<string,string>, 
+	financial map<string,string>) 
+	ROW FORMAT SERDE 'com.ibm.spss.hive.serde2.xml.XmlSerDe' 
+	WITH SERDEPROPERTIES ( 
+	"column.xpath.customer_id"="/record/@customer_id",
+	"column.xpath.income"="/record/income/text()",
+	"column.xpath.demographics"="/record/demographics/*",
+	"column.xpath.financial"="/record/financial/*"
+	)
+	STORED AS
+	INPUTFORMAT 'com.ibm.spss.hive.serde2.xml.XmlInputFormat'
+	OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat'
+	location '/user/hduser/xmlserdebank/'
+	TBLPROPERTIES (
+	"xmlinput.start"="<record customer",
+	"xmlinput.end"="</record>" );
+
+4. Load xml file to table path
+
+	load data local inpath '/home/hduser/bankserde.xml' overwrite into table xml_bank;
+
+
+5. Convert xml data to json
+
+	cd /home/hduser/
+
+	-- get json serde from maven
+	wget https://repo1.maven.org/maven2/org/apache/hive/hcatalog/hive-hcatalog-core/1.2.1/hive-hcatalog-core-1.2.1.jar
+
+	--Load the above JSON serde jar in hive lib directory (/usr/local/hive/lib) or add this jar in hive session.
+	add jar /home/hduser/hive-hcatalog-core-1.2.1.jar;
+
+	-- Create json table (We cant create external table using CTAS, it will throw error. Create managed table.)
+	create table xml_bank_json ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe' stored as textfile location '/user/hduser/custxmljson' as select * from xml_bank;
+
+	-- verify the data. Table xml_bank_json and xml_bank will look same.
+	select * from xml_bank_json
+	
+
+	-- check its underlying store
+
+	 hadoop fs -cat /home/hduser/bankserde.xml
+	 hadoop fs -cat /user/hduser/custxmljson/*
+
+	Initial XML data:
+
+<record customer_id="0000-JTALA">
+        <income>200000</income>
+        <demographics>
+            <gender>F</gender>
+            <agecat>1</agecat>
+            <edcat>1</edcat>
+            <jobcat>2</jobcat>
+            <empcat>2</empcat>
+            <retire>0</retire>
+            <jobsat>1</jobsat>
+            <marital>1</marital>
+            <spousedcat>1</spousedcat>
+            <residecat>4</residecat>
+            <homeown>0</homeown>
+            <hometype>2</hometype>
+            <addresscat>2</addresscat>
+        </demographics>
+        <financial>
+            <income>18</income>
+            <creddebt>1.003392</creddebt>
+            <othdebt>2.740608</othdebt>
+            <default>0</default>
+        </financial>
+	</record>
+	<record customer_id="0000-KDELL">
+        <income>10000</income>
+        <demographics>
+            <gender>M</gender>
+            <agecat>2</agecat>
+            <edcat>1</edcat>
+            <jobcat>2</jobcat>
+            <empcat>3</empcat>
+            <retire>1</retire>
+            <jobsat>1</jobsat>
+            <marital>1</marital>
+            <spousedcat>1</spousedcat>
+            <residecat>4</residecat>
+            <homeown>0</homeown>
+            <hometype>3</hometype>
+            <addresscat>2</addresscat>
+        </demographics>
+        <financial>
+            <income>20</income>
+            <creddebt>1.002292</creddebt>
+            <othdebt>2.113208</othdebt>
+            <default>0</default>
+        </financial>
+</record>
+
+
+	Final JSON:
+
+	{"customer_id":"0000-JTALA","income":200000,"demographics":{"spousedcat":"1","empcat":"2","gender":"F","jobsat":"1","homeown":"0","edcat":"1","hometype":"2","addresscat":"2","marital":"1","jobcat":"2","retire":"0","residecat":"4","agecat":"1"},"financial":{"income":"18","default":"0","creddebt":"1.003392","othdebt":"2.740608"}}
+{"customer_id":"0000-KDELL","income":10000,"demographics":{"spousedcat":"1","empcat":"3","gender":"M","jobsat":"1","homeown":"0","edcat":"1","hometype":"3","addresscat":"2","marital":"1","jobcat":"2","retire":"1","residecat":"4","agecat":"2"},"financial":{"income":"20","default":"0","creddebt":"1.002292","othdebt":"2.113208"}}
